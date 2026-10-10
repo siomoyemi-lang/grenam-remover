@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Carter Temm (Modified for complete recursive & robust attribute handling)
+# Copyright (c) 2019 Carter Temm (Modified for dynamic detection, recursive scanning & robust attribute handling)
 # This file is covered by the MIT license
 
 EXE_SIZES = [844288, 849920]
@@ -48,10 +48,8 @@ def scan():
     num = 0
     matches = []
     
-    # os.walk automatically traverses all subdirectories recursively
     for root, dirnames, filenames in os.walk(args.path, onerror=walk_error_handler):
         for filename in filenames:
-            # Case-insensitive check for v*.exe pattern
             if filename.lower().startswith("v") and filename.lower().endswith(".exe"):
                 good_file = os.path.join(root, filename)
                 bad_file = os.path.join(root, filename[1:])  # Strip leading 'v'
@@ -76,7 +74,6 @@ def scan():
                             except Exception as e:
                                 print(f"Error repairing {bad_file}: {e}")
                         
-                        # Remove leftover icon files created by Grenam
                         ico = os.path.join(root, filename[:-3] + "ico")
                         if os.path.isfile(ico):
                             matches.append(ico)
@@ -95,7 +92,7 @@ parser.add_argument("-f", "--file", help="Filename to write clean results log to
 parser.add_argument("-p", "--path", help="Path to scan, default is C:\\", default="C:\\")
 args = parser.parse_args()
 
-print("Grenam removal tool v1.1 (Recursive & Robust Edition)")
+print("Grenam removal tool v1.2 (Dynamic Detection & Recursive Edition)")
 print("Written by Carter Temm <http://github.com/cartertemm/grenam-remover>")
 if not is_admin():
     print("Warning! For optimal performance and quality, make sure to run this program as admin")
@@ -105,23 +102,33 @@ if not os.path.exists(args.path):
     sys.exit()
 
 print("Scanning for active virus processes in appdata & startup...")
-path = os.path.join(os.environ.get("appdata", ""), "paint.exe")
-if os.path.isfile(path):
+appdata_path = os.environ.get("appdata", "")
+paint_path = os.path.join(appdata_path, "paint.exe") if appdata_path else ""
+
+if paint_path and os.path.isfile(paint_path):
     print("Found paint.exe in appdata")
-    if is_grenam_size(path):
+    try:
+        detected_size = os.path.getsize(paint_path)
+        if detected_size not in EXE_SIZES:
+            EXE_SIZES.append(detected_size)
+            print(f"Dynamically added active Grenam signature size: {detected_size} bytes")
+    except Exception:
+        pass
+
+    if is_grenam_size(paint_path):
         print("System appears to be infected")
         if not args.dry:
             print("Removing paint.exe process and binary...")
             cmd("taskkill /f /im paint.exe")
-            clear_attributes(path)
+            clear_attributes(paint_path)
             try:
-                os.remove(path)
+                os.remove(paint_path)
             except Exception:
                 pass
 else:
     print("Not found in appdata")
 
-startup_location = os.path.join(os.environ.get("appdata", ""), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "paint.lnk")
+startup_location = os.path.join(appdata_path, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "paint.lnk")
 if os.path.isfile(startup_location):
     print("Found paint shortcut in startup")
     if not args.dry:
@@ -148,4 +155,3 @@ if args.file:
 else:
     if s:
         print("\n".join(s))
-        
